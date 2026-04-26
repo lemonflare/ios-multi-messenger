@@ -14,9 +14,9 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 ### 1. 탈옥된 iOS 장비에서 앱 덤프 뜨기
 
 다음 도구 중 하나를 사용하여 앱을 덤프:
-- [TrollDecrypt](https://github.com/alfiecg24/TrollDecrypt)
-- [TrollDecryptJB](https://github.com/alfiecg24/TrollDecryptJB)
-- [flexdecrypt](https://github.com/ichitaso/flexdecrypt)
+- [TrollDecrypt](https://github.com/donato-fiore/TrollDecrypt)
+- [TrollDecryptJB](https://github.com/34306/TrollDecryptJB)
+- [flexdecrypt](https://github.com/JohnCoates/flexdecrypt)
 
 ### 2. Decrypted IPA 확보
 
@@ -179,7 +179,7 @@ multi/
 - [GitHub Actions 수동 실행 가이드](https://docs.github.com/actions/using-workflows/manually-running-a-workflow)
 - [MultiKaTalkFix](https://gitlab.com/alias20/multikatalkfix) - 원본 dylib 참고 소스
 - [optool](https://github.com/alexzielenski/optool) - dylib 주입 도구
-- [ldid Homebrew formula](https://formulae.brew.sh/formula/ldid) - CI에서 사용하는 Mach-O 서명 도구
+- [ldid](https://github.com/ProcursusTeam/ldid) - Mach-O 서명 도구
 
 ## Disclaimer
 
