@@ -133,7 +133,7 @@ jobs:
             clean build
 
           # Find and copy the built framework binary
-          FRAMEWORK_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "MultiKaTalkFix.framework" -type d | head -n 1)
+          FRAMEWORK_PATH=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Build/Products/Release-iphoneos/MultiKaTalkFix.framework" -type d | head -n 1)
 
           if [ -z "$FRAMEWORK_PATH" ]; then
             echo "::error::MultiKaTalkFix.framework not found in build output"
@@ -141,6 +141,13 @@ jobs:
           fi
 
           echo "Found framework at: $FRAMEWORK_PATH"
+
+          # Verify the binary exists
+          if [ ! -f "$FRAMEWORK_PATH/MultiKaTalkFix" ]; then
+            echo "::error::Framework binary not found at $FRAMEWORK_PATH/MultiKaTalkFix"
+            ls -la "$FRAMEWORK_PATH"
+            exit 1
+          fi
 
           # Copy the framework binary as dylib
           mkdir -p Dylibs
