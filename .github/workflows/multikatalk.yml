@@ -163,17 +163,19 @@ jobs:
           BINARY="$APP/$(basename "$APP" .app)"
           DYLIB_PATH="Dylibs/MultiKaTalkFix.dylib"
 
-          # Download optool
-          wget https://github.com/alexzielenski/optool/releases/download/0.1.1/optool.zip -O optool.zip
-          unzip -q optool.zip
-          chmod +x optool
+          # Install optool from source
+          git clone https://github.com/alexzielenski/optool.git
+          cd optool
+          git submodule update --init --recursive
+          xcodebuild -project optool.xcodeproj -configuration Release -scheme optool build
+          cd ..
 
           # Copy dylib to app bundle
           mkdir -p "$APP/Dylibs"
           cp "$DYLIB_PATH" "$APP/Dylibs/MultiKaTalkFix.dylib"
 
           # Inject dylib
-          ./optool install -c load -p "@executable_path/Dylibs/MultiKaTalkFix.dylib" -t "$BINARY"
+          ./optool/build/Release/optool install -c load -p "@executable_path/Dylibs/MultiKaTalkFix.dylib" -t "$BINARY"
 
           echo "Dylib injected successfully"
 
