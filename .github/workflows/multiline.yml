@@ -59,6 +59,7 @@ jobs:
           echo "APP_NAME=$APP" >> "$GITHUB_ENV"
           echo "App found: $APP"
 
+
       - name: Modify Info.plist
         run: |
           APP="${{ env.APP_NAME }}"
@@ -66,31 +67,14 @@ jobs:
           SUFFIX="${{ github.event.inputs.app_suffix }}"
           DISPLAY="${{ github.event.inputs.display_name }}"
 
-          # Build new identifiers
-          ORIGINAL_BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO")
-          NEW_BUNDLE="${ORIGINAL_BUNDLE}${SUFFIX}"
+          # Make Info.plist writable
+          chmod u+w "$INFO"
 
-          ORIGINAL_GROUP=$(/usr/libexec/PlistBuddy -c "Print :AppGroupIdentifier" "$INFO" 2>/dev/null || echo "")
-          if [ -n "$ORIGINAL_GROUP" ]; then
-            NEW_GROUP="${ORIGINAL_GROUP}${SUFFIX}"
-          fi
-
-          # Modify basic bundle info
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $NEW_BUNDLE" "$INFO"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $DISPLAY" "$INFO" 2>/usr/libexec/PlistBuddy -c "Set :CFBundleName $DISPLAY" "$INFO" || /usr/libexec/PlistBuddy -c "Add :CFBundleName string $DISPLAY" "$INFO"
-
-          # Modify app group identifier if exists
-          if [ -n "$NEW_GROUP" ]; then
-            /usr/libexec/PlistBuddy -c "Set :AppGroupIdentifier $NEW_GROUP" "$INFO"
-          fi
+          # Use Python script to modify plist
+          python3 scripts/modify_plist.py "$INFO" "$SUFFIX" "$DISPLAY"
 
           # Modify URL schemes - add suffix to LINE schemes
           python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "line,re,line1,line2,line3,line4,line5"
-
-          echo "Modified Info.plist:"
-          /usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO"
-          /usr/libexec/PlistBuddy -c "Print CFBundleDisplayName" "$INFO"
-
       - name: Modify InfoPlist.strings
         run: |
           APP="${{ env.APP_NAME }}"

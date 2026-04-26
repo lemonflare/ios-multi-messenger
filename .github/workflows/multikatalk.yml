@@ -59,6 +59,7 @@ jobs:
           echo "APP_NAME=$APP" >> "$GITHUB_ENV"
           echo "App found: $APP"
 
+
       - name: Modify Info.plist
         run: |
           APP="${{ env.APP_NAME }}"
@@ -66,31 +67,14 @@ jobs:
           SUFFIX="${{ github.event.inputs.app_suffix }}"
           DISPLAY="${{ github.event.inputs.display_name }}"
 
-          # Build new identifiers
-          ORIGINAL_BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO")
-          NEW_BUNDLE="${ORIGINAL_BUNDLE}${SUFFIX}"
+          # Make Info.plist writable
+          chmod u+w "$INFO"
 
-          ORIGINAL_GROUP=$(/usr/libexec/PlistBuddy -c "Print APP_GROUPS_IDENTIFIER" "$INFO" 2>/dev/null || echo "group.$ORIGINAL_BUNDLE")
-          NEW_GROUP="${ORIGINAL_GROUP}${SUFFIX}"
+          # Use Python script to modify plist
+          python3 scripts/modify_plist.py "$INFO" "$SUFFIX" "$DISPLAY"
 
-          ORIGINAL_HANDOFF=$(/usr/libexec/PlistBuddy -c "Print HANDOFF_IDENTIFIER" "$INFO" 2>/dev/null || echo "${ORIGINAL_BUNDLE}.handoff")
-          NEW_HANDOFF="${ORIGINAL_HANDOFF}${SUFFIX}"
-
-          # Modify basic bundle info
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $NEW_BUNDLE" "$INFO"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $DISPLAY" "$INFO"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName $DISPLAY" "$INFO"
-
-          # Modify group and handoff identifiers
-          /usr/libexec/PlistBuddy -c "Set :APP_GROUPS_IDENTIFIER $NEW_GROUP" "$INFO"
-          /usr/libexec/PlistBuddy -c "Set :HANDOFF_IDENTIFIER $NEW_HANDOFF" "$INFO"
-
-          # Modify URL schemes - add suffix to all kakaotalk schemes
-          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "kakaotalk,kakaolink,kakaoauth,kakaoplus,kakaokompassauth,kakaoopen,kakaotalkqrcode,kakaomom,kakaobizchat,kakaosync,kakaopay,kakaotaxi,kakaopage,kakaoweb,daumapps,daumwebtoon,brunchapp,daummaps,kakaostory,alphatalk,alphalink,alphaopen,alphaauth,alphaplus,alphakompassauth,alphastory"
-
-          echo "Modified Info.plist:"
-          /usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO"
-          /usr/libexec/PlistBuddy -c "Print CFBundleDisplayName" "$INFO"
+          # Modify URL schemes - add suffix to KakaoTalk schemes
+          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "kakaotalk,kakaolink,kakaoauth,kakaoplus,kakaokompassauth,kakaoopen,kakaotalkqrcode,kakaomoim,kakaobizchat,kakaosync,kakaopay,kakaotaxi,kakaopage,kakaoweb,daumapps,daumwebtoon,brunchapp,daummaps,kakaostory,alphatalk,alphalink,alphaopen,alphaauth,alphaplus,alphakompassauth,alphastory"
 
       - name: Modify InfoPlist.strings
         run: |
