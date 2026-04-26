@@ -164,12 +164,22 @@ jobs:
           xcodebuild -project optool.xcodeproj -configuration Release -scheme optool build
           cd ..
 
+          # Find the built optool binary
+          OPTOOL=$(find ~/Library/Developer/Xcode/DerivedData -path "*/Build/Products/Release/optool" -type f | head -n 1)
+
+          if [ -z "$OPTOOL" ]; then
+            echo "::error::optool binary not found in build output"
+            exit 1
+          fi
+
+          echo "Found optool at: $OPTOOL"
+
           # Copy dylib to app bundle
           mkdir -p "$APP/Dylibs"
           cp "$DYLIB_PATH" "$APP/Dylibs/MultiLineFix.dylib"
 
           # Inject dylib
-          ./optool/build/Release/optool install -c load -p "@executable_path/Dylibs/MultiLineFix.dylib" -t "$BINARY"
+          "$OPTOOL" install -c load -p "@executable_path/Dylibs/MultiLineFix.dylib" -t "$BINARY"
 
           echo "Dylib injected successfully"
 
