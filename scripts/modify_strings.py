@@ -60,5 +60,6 @@ if __name__ == '__main__':
     key = sys.argv[2]
     new_value = sys.argv[3]
 
-    success = modify_strings(strings_path, key, new_value)
-    sys.exit(0 if success else 1)
+    modify_strings(strings_path, key, new_value)
+    # Always exit successfully - missing keys are not critical
+    sys.exit(0)
