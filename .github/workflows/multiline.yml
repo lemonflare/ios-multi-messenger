@@ -72,11 +72,11 @@ jobs:
           # Make Info.plist writable
           chmod u+w "$INFO"
 
-          # Use Python script to modify plist
-          python3 scripts/modify_plist.py "$INFO" "$SUFFIX" "$DISPLAY"
+          # Keep LINE's runtime-only identifiers conservative; MultiLineFix handles app groups at runtime.
+          python3 scripts/modify_plist.py "$INFO" "$SUFFIX" "$DISPLAY" --no-associated-identifiers
 
-          # Registered URL schemes and query schemes get the suffix to avoid conflicts with the original app.
-          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "ALL" --include-queries --query-mode all
+          # Query schemes do not register this app with iOS, so keep them original for LINE compatibility.
+          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "line,re"
       - name: Modify InfoPlist.strings
         run: |
           APP="${{ env.APP_NAME }}"
@@ -193,7 +193,7 @@ jobs:
           BINARY="$APP/$EXECUTABLE"
           ENTITLEMENTS="/tmp/multiline-entitlements.plist"
 
-          python3 scripts/create_entitlements.py "$APP/Info.plist" "$ENTITLEMENTS" --team-id "$TEAM_ID"
+          python3 scripts/create_entitlements.py "$APP/Info.plist" "$ENTITLEMENTS" --team-id "$TEAM_ID" --no-app-groups
 
           # Remove stale bundle signatures before ad-hoc signing modified Mach-O files.
           find "$APP" -name "_CodeSignature" -type d -prune -exec rm -rf {} +

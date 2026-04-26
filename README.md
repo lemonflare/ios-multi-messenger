@@ -85,8 +85,9 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - CFBundleIdentifier: com.iwilab.KakaoTalk → com.iwilab.KakaoTalk2
 - CFBundleDisplayName: KakaoTalk → KakaoTalk2
 - APP_GROUPS_IDENTIFIER: group.com.iwilab.KakaoTalk → group.com.iwilab.KakaoTalk2
-- 앱 등록 URL schemes와 LSApplicationQueriesSchemes에 -2 접미사 추가
-- NSUserActivityTypes와 BGTaskSchedulerPermittedIdentifiers의 앱 식별자도 함께 변경
+- KakaoTalk은 앱 등록 URL schemes와 LSApplicationQueriesSchemes에 -2 접미사 추가
+- KakaoTalk은 NSUserActivityTypes와 BGTaskSchedulerPermittedIdentifiers의 앱 식별자도 함께 변경
+- LINE은 설치 호환성을 위해 앱 등록 URL schemes만 보수적으로 변경
 ```
 
 ### 3. InfoPlist.strings 수정
@@ -111,7 +112,8 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 ### 7. 엔타이틀먼트 적용
 - Info.plist의 CFBundleIdentifier를 기준으로 application-identifier 생성
 - keychain-access-groups는 sideload 호환성을 위해 `TEAM_ID.*` 형태로 생성
-- APP_GROUPS_IDENTIFIER가 있으면 com.apple.security.application-groups에 반영
+- KakaoTalk은 APP_GROUPS_IDENTIFIER를 com.apple.security.application-groups에 반영
+- LINE은 Feather 설치 호환성을 위해 application-groups entitlement를 제외
 - 메인 실행 파일은 CFBundleExecutable에서 읽어 정확히 선택
 - 주입한 dylib와 번들 내부 Mach-O 파일을 ldid로 재서명
 - 기존 _CodeSignature 제거 후 재패킹
@@ -146,7 +148,8 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - CFBundleExecutable 값이 실제 메인 바이너리 파일명과 일치하는지 확인
 - 주입된 Dylibs/*.dylib가 재서명되었는지 확인
 - keychain-access-groups가 `TEAM_ID.*` 형태인지 확인
-- APP_GROUPS_IDENTIFIER와 application-groups entitlement가 같은 group ID를 쓰는지 확인
+- KakaoTalk은 APP_GROUPS_IDENTIFIER와 application-groups entitlement가 같은 group ID를 쓰는지 확인
+- LINE은 application-groups entitlement가 빠져 있는지 확인
 
 ### 앱 충돌
 - dylib가 제대로 주입되었는지 확인
