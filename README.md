@@ -91,7 +91,8 @@ GitHub Actions를 사용하여 MultiKaTalk IPA를 빌드하는 프로젝트입�
 
 ### 5. MultiKaTalkFix.dylib 빌드
 - Xcode 프로젝트 빌드
-- 키체인 충돌 방지
+- 현재 entitlement에서 TeamID를 읽어 키체인 access group을 동적으로 보정
+- 키체인 service 값은 원본을 유지하여 로그인 토큰과 오픈채팅 암호화 키 충돌 방지
 - 앱 그룹 충돌 방지
 - Siri 충돌 방지
 

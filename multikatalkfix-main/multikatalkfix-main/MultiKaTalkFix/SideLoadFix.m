@@ -16,20 +16,51 @@
 static IMP origIMP_containerURLForSecurityApplicationGroupIdentifier = NULL;
 static IMP origIMP_siriAuthorizationStatus = NULL;
 static NSString* keychainAccessGroup = @"";
-static NSString* keychainService = @"";
 static NSURL* fakeGroupContainerURL;
 
 
-static NSString* appSuffixFromBundleIdentifier(void)
+static NSString* stringEntitlement(NSString* entitlementName)
 {
-    NSString* bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
-    NSString* kakaoPrefix = @"com.iwilab.KakaoTalk";
-
-    if([bundleIdentifier hasPrefix:kakaoPrefix] && bundleIdentifier.length > kakaoPrefix.length) {
-        return [bundleIdentifier substringFromIndex:kakaoPrefix.length];
+    SecTaskRef task = SecTaskCreateFromSelf(kCFAllocatorDefault);
+    if(!task) {
+        return @"";
     }
 
-    return @"";
+    CFTypeRef value = SecTaskCopyValueForEntitlement(task, (__bridge CFStringRef)entitlementName, NULL);
+    CFRelease(task);
+
+    if(!value) {
+        return @"";
+    }
+
+    id object = CFBridgingRelease(value);
+    return [object isKindOfClass:[NSString class]] ? object : @"";
+}
+
+static NSString* normalizeAppIdentifierPrefix(NSString* prefix)
+{
+    if(![prefix isKindOfClass:[NSString class]] || prefix.length == 0) {
+        return @"";
+    }
+
+    return [prefix hasSuffix:@"."] ? prefix : [prefix stringByAppendingString:@"."];
+}
+
+static NSString* loadAppIdentifierPrefix(NSString* bundleIdentifier)
+{
+    NSString* applicationIdentifier = stringEntitlement(@"application-identifier");
+    if(applicationIdentifier.length > bundleIdentifier.length && [applicationIdentifier hasSuffix:bundleIdentifier]) {
+        NSUInteger prefixLength = applicationIdentifier.length - bundleIdentifier.length;
+        return normalizeAppIdentifierPrefix([applicationIdentifier substringToIndex:prefixLength]);
+    }
+
+    NSString* teamIdentifier = stringEntitlement(@"com.apple.developer.team-identifier");
+    if(teamIdentifier.length > 0) {
+        return normalizeAppIdentifierPrefix(teamIdentifier);
+    }
+
+    NSString* infoPrefix = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"AppIdentifierPrefix"];
+    return normalizeAppIdentifierPrefix(infoPrefix);
 }
 
 void createDirectoryIfNotExists(NSURL* URL)
@@ -40,113 +71,77 @@ void createDirectoryIfNotExists(NSURL* URL)
     }
 }
 
+static CFDictionaryRef copyDictionaryReplacingAccessGroup(CFDictionaryRef dictionary)
+{
+    if(keychainAccessGroup.length == 0 || !dictionary || !CFDictionaryContainsKey(dictionary, kSecAttrAccessGroup)) {
+        return NULL;
+    }
+
+    CFMutableDictionaryRef mutableDictionary = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, dictionary);
+    if(!mutableDictionary) {
+        return NULL;
+    }
+
+    CFDictionarySetValue(mutableDictionary, kSecAttrAccessGroup, (__bridge const void*)keychainAccessGroup);
+    CFDictionaryRef copiedDictionary = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableDictionary);
+    CFRelease(mutableDictionary);
+    return copiedDictionary;
+}
+
 static OSStatus (*orig_SecItemAdd)(CFDictionaryRef, CFTypeRef*);
 static OSStatus hook_SecItemAdd(CFDictionaryRef attributes, CFTypeRef* result) {
-    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(attributes, kSecAttrAccessGroup)) {
-        CFMutableDictionaryRef mutableAttributes = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributes);
-        CFDictionarySetValue(mutableAttributes, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
-        CFDictionarySetValue(mutableAttributes, kSecAttrService, (__bridge void*)keychainService);
-        attributes = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableAttributes);
+    CFDictionaryRef rewrittenAttributes = copyDictionaryReplacingAccessGroup(attributes);
+    OSStatus status = orig_SecItemAdd(rewrittenAttributes ? rewrittenAttributes : attributes, result);
+    if(rewrittenAttributes) {
+        CFRelease(rewrittenAttributes);
     }
-    else if (keychainService.length > 0 && CFDictionaryContainsKey(attributes, kSecAttrService)) {
-        CFMutableDictionaryRef mutableAttributes = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributes);
-        CFDictionarySetValue(mutableAttributes, kSecAttrService, (__bridge void*)keychainService);
-        attributes = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableAttributes);
-    }
-    return orig_SecItemAdd(attributes, result);
+    return status;
 }
 
 static OSStatus (*orig_SecItemCopyMatching)(CFDictionaryRef, CFTypeRef*);
 static OSStatus hook_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef* result) {
-    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
-        CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
+    CFDictionaryRef rewrittenQuery = copyDictionaryReplacingAccessGroup(query);
+    OSStatus status = orig_SecItemCopyMatching(rewrittenQuery ? rewrittenQuery : query, result);
+    if(rewrittenQuery) {
+        CFRelease(rewrittenQuery);
     }
-    else if (keychainService.length > 0 && CFDictionaryContainsKey(query, kSecAttrService)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
-    }
-    return orig_SecItemCopyMatching(query, result);
+    return status;
 }
 
 static OSStatus (*orig_SecItemUpdate)(CFDictionaryRef, CFDictionaryRef);
 static OSStatus hook_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
-    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
-        CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
+    CFDictionaryRef rewrittenQuery = copyDictionaryReplacingAccessGroup(query);
+    CFDictionaryRef rewrittenAttributesToUpdate = copyDictionaryReplacingAccessGroup(attributesToUpdate);
+    OSStatus status = orig_SecItemUpdate(rewrittenQuery ? rewrittenQuery : query, rewrittenAttributesToUpdate ? rewrittenAttributesToUpdate : attributesToUpdate);
+    if(rewrittenQuery) {
+        CFRelease(rewrittenQuery);
     }
-    else if (keychainService.length > 0 && CFDictionaryContainsKey(query, kSecAttrService)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
+    if(rewrittenAttributesToUpdate) {
+        CFRelease(rewrittenAttributesToUpdate);
     }
-    
-    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(attributesToUpdate, kSecAttrAccessGroup)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributesToUpdate);
-        CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        attributesToUpdate = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
-    }
-    else if (keychainService.length > 0 && CFDictionaryContainsKey(attributesToUpdate, kSecAttrService)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributesToUpdate);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        attributesToUpdate = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
-    }
-    return orig_SecItemUpdate(query, attributesToUpdate);
+    return status;
 }
 
 static OSStatus (*orig_SecItemDelete)(CFDictionaryRef);
 static OSStatus hook_SecItemDelete(CFDictionaryRef query) {
-    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
-        CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
+    CFDictionaryRef rewrittenQuery = copyDictionaryReplacingAccessGroup(query);
+    OSStatus status = orig_SecItemDelete(rewrittenQuery ? rewrittenQuery : query);
+    if(rewrittenQuery) {
+        CFRelease(rewrittenQuery);
     }
-    else if (keychainService.length > 0 && CFDictionaryContainsKey(query, kSecAttrService)) {
-        CFMutableDictionaryRef mutableQuery =
-        CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
-        CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
-        query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
-    }
-    return orig_SecItemDelete(query);
+    return status;
 }
 
 void loadKeychainAccessGroup(void)
 {
-    NSDictionary* dummyItem = @{
-        (__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
-        (__bridge id)kSecAttrAccount : @"dummyItem",
-        (__bridge id)kSecAttrService : @"dummyService",
-        (__bridge id)kSecReturnAttributes : @YES,
-    };
-    
-    CFTypeRef result = NULL;
-    OSStatus ret = SecItemCopyMatching((__bridge CFDictionaryRef)dummyItem, &result);
-    if(ret == -25300)
-    {
-        ret = SecItemAdd((__bridge CFDictionaryRef)dummyItem, &result);
-    }
-    
-    if(ret == 0 && result)
-    {
-        NSDictionary* resultDict = (__bridge id)result;
-        keychainAccessGroup = resultDict[(__bridge id)kSecAttrAccessGroup];
-        NSString* suffix = appSuffixFromBundleIdentifier();
-        keychainService = suffix.length > 0 ? [@"com.kakao.Talk" stringByAppendingString:suffix] : @"com.kakao.Talk";
-        NSLog(@"[MultiKaTalkFix] Loaded keychainAccessGroup: %@, keychainService: %@", keychainAccessGroup, keychainService);
+    NSString* bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
+    NSString* appIdentifierPrefix = loadAppIdentifierPrefix(bundleIdentifier);
+
+    if(appIdentifierPrefix.length > 0 && bundleIdentifier.length > 0) {
+        keychainAccessGroup = [appIdentifierPrefix stringByAppendingString:bundleIdentifier];
+        NSLog(@"[MultiKaTalkFix] Loaded keychainAccessGroup: %@", keychainAccessGroup);
+    } else {
+        NSLog(@"[MultiKaTalkFix] Failed to load keychainAccessGroup. prefix: %@, bundle: %@", appIdentifierPrefix, bundleIdentifier);
     }
 }
 
