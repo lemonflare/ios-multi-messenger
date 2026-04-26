@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Create minimal sideload entitlements from an app Info.plist.
+Create sideload entitlements from an app Info.plist.
 """
 
 import argparse
@@ -39,9 +39,14 @@ def main():
         help="Team identifier to use in generated entitlements",
     )
     parser.add_argument(
-        "--include-app-groups",
+        "--no-app-groups",
         action="store_true",
-        help="Include APP_GROUPS_IDENTIFIER values from Info.plist",
+        help="Do not include APP_GROUPS_IDENTIFIER values from Info.plist",
+    )
+    parser.add_argument(
+        "--exact-keychain-access-group",
+        action="store_true",
+        help="Use TEAM_ID.bundle-id instead of TEAM_ID.* for keychain access",
     )
     args = parser.parse_args()
 
@@ -64,14 +69,15 @@ def main():
         return 1
 
     app_identifier = f"{team_id}.{bundle_id}"
+    keychain_access_group = app_identifier if args.exact_keychain_access_group else f"{team_id}.*"
     entitlements = {
         "application-identifier": app_identifier,
         "com.apple.developer.team-identifier": team_id,
         "get-task-allow": True,
-        "keychain-access-groups": [app_identifier],
+        "keychain-access-groups": [keychain_access_group],
     }
 
-    if args.include_app_groups:
+    if not args.no_app_groups:
         groups = unique(as_list(info.get("APP_GROUPS_IDENTIFIER")))
         if groups:
             entitlements["com.apple.security.application-groups"] = groups
@@ -83,7 +89,8 @@ def main():
 
     print(f"Created entitlements for {bundle_id}")
     print(f"  application-identifier: {app_identifier}")
-    if args.include_app_groups and entitlements.get("com.apple.security.application-groups"):
+    print(f"  keychain-access-groups: {keychain_access_group}")
+    if not args.no_app_groups and entitlements.get("com.apple.security.application-groups"):
         print("  app groups: " + ", ".join(entitlements["com.apple.security.application-groups"]))
 
     return 0

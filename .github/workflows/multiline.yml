@@ -75,8 +75,8 @@ jobs:
           # Use Python script to modify plist
           python3 scripts/modify_plist.py "$INFO" "$SUFFIX" "$DISPLAY"
 
-          # Modify only registered LINE URL schemes. Query schemes do not conflict.
-          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "line,re"
+          # Registered URL schemes and query schemes get the suffix to avoid conflicts with the original app.
+          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "ALL" --include-queries --query-mode all
       - name: Modify InfoPlist.strings
         run: |
           APP="${{ env.APP_NAME }}"
@@ -206,7 +206,7 @@ jobs:
       - name: Create IPA
         run: |
           OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
-          zip -qry "$OUTPUT_NAME" Payload
+          zip -qr "$OUTPUT_NAME" Payload
           echo "Created IPA: $OUTPUT_NAME"
           ls -lh "$OUTPUT_NAME"
 

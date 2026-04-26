@@ -5,6 +5,7 @@ Modify Info.plist for multi-messenger support.
 
 import sys
 import plistlib
+import argparse
 from pathlib import Path
 
 
@@ -14,7 +15,24 @@ def append_suffix_once(value, suffix):
     return f"{value}{suffix}"
 
 
-def modify_plist(info_path, suffix, display_name):
+def replace_identifier_prefix(value, original_bundle, new_bundle, suffix):
+    if not value:
+        return value
+
+    if original_bundle and original_bundle in value:
+        return value.replace(original_bundle, new_bundle)
+
+    # KakaoTalk has a few identifiers using kakaoTalk instead of KakaoTalk.
+    if original_bundle == "com.iwilab.KakaoTalk":
+        original_kakao_bg = "com.iwilab.kakaoTalk"
+        new_kakao_bg = f"{original_kakao_bg}{suffix}"
+        if original_kakao_bg in value:
+            return value.replace(original_kakao_bg, new_kakao_bg)
+
+    return value
+
+
+def modify_plist(info_path, suffix, display_name, rewrite_associated_identifiers=True):
     """
     Modify Info.plist for multi-instance support.
 
@@ -40,8 +58,13 @@ def modify_plist(info_path, suffix, display_name):
 
     # Build new identifiers
     new_bundle = append_suffix_once(original_bundle, suffix)
-    new_group = append_suffix_once(original_group, suffix) if original_group else ""
-    new_handoff = append_suffix_once(original_handoff, suffix) if original_handoff else ""
+    new_group = replace_identifier_prefix(original_group, original_bundle, new_bundle, suffix) if original_group else ""
+    if new_group == original_group:
+        new_group = append_suffix_once(original_group, suffix)
+
+    new_handoff = replace_identifier_prefix(original_handoff, original_bundle, new_bundle, suffix) if original_handoff else ""
+    if new_handoff == original_handoff:
+        new_handoff = append_suffix_once(original_handoff, suffix)
 
     # Modify basic bundle info
     plist['CFBundleIdentifier'] = new_bundle
@@ -53,6 +76,19 @@ def modify_plist(info_path, suffix, display_name):
         plist['APP_GROUPS_IDENTIFIER'] = new_group
     if new_handoff:
         plist['HANDOFF_IDENTIFIER'] = new_handoff
+
+    if rewrite_associated_identifiers:
+        if 'NSUserActivityTypes' in plist:
+            plist['NSUserActivityTypes'] = [
+                replace_identifier_prefix(activity, original_bundle, new_bundle, suffix)
+                for activity in plist['NSUserActivityTypes']
+            ]
+
+        if 'BGTaskSchedulerPermittedIdentifiers' in plist:
+            plist['BGTaskSchedulerPermittedIdentifiers'] = [
+                replace_identifier_prefix(bg_task, original_bundle, new_bundle, suffix)
+                for bg_task in plist['BGTaskSchedulerPermittedIdentifiers']
+            ]
 
     # Write modified plist
     with open(info_path, 'wb') as f:
@@ -68,13 +104,23 @@ def modify_plist(info_path, suffix, display_name):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 4:
-        print(f"Usage: {sys.argv[0]} <plist_path> <suffix> <display_name>")
-        print(f"Example: {sys.argv[0]} Payload/KakaoTalk.app/Info.plist 2 KakaoTalk2")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Modify Info.plist for multi-instance support.",
+        epilog=f"Example: {sys.argv[0]} Payload/KakaoTalk.app/Info.plist 2 KakaoTalk2",
+    )
+    parser.add_argument("plist_path")
+    parser.add_argument("suffix")
+    parser.add_argument("display_name")
+    parser.add_argument(
+        "--no-associated-identifiers",
+        action="store_true",
+        help="Do not rewrite NSUserActivityTypes or BGTaskSchedulerPermittedIdentifiers",
+    )
+    args = parser.parse_args()
 
-    plist_path = sys.argv[1]
-    suffix = sys.argv[2]
-    display_name = sys.argv[3]
-
-    modify_plist(plist_path, suffix, display_name)
+    modify_plist(
+        args.plist_path,
+        args.suffix,
+        args.display_name,
+        rewrite_associated_identifiers=not args.no_associated_identifiers,
+    )
