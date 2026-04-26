@@ -132,16 +132,21 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             clean build
 
-          # Find and copy the built dylib
-          DYLIB_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "MultiKaTalkFix.dylib" | head -n 1)
+          # Find and copy the built framework binary
+          FRAMEWORK_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "MultiKaTalkFix.framework" -type d | head -n 1)
 
-          if [ -z "$DYLIB_PATH" ]; then
-            echo "::error::MultiKaTalkFix.dylib not found in build output"
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            echo "::error::MultiKaTalkFix.framework not found in build output"
             exit 1
           fi
 
+          echo "Found framework at: $FRAMEWORK_PATH"
+
+          # Copy the framework binary as dylib
           mkdir -p Dylibs
-          cp "$DYLIB_PATH" Dylibs/MultiKaTalkFix.dylib
+          cp "$FRAMEWORK_PATH/MultiKaTalkFix" Dylibs/MultiKaTalkFix.dylib
+          echo "Built dylib: Dylibs/MultiKaTalkFix.dylib"
+          file Dylibs/MultiKaTalkFix.dylib
           echo "Built dylib: Dylibs/MultiKaTalkFix.dylib"
           file Dylibs/MultiKaTalkFix.dylib
 

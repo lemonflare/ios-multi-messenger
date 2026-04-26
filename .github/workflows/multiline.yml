@@ -128,16 +128,19 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             clean build
 
-          # Find and copy the built dylib
-          DYLIB_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "MultiLineFix.dylib" | head -n 1)
+          # Find and copy the built framework binary
+          FRAMEWORK_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "MultiLineFix.framework" -type d | head -n 1)
 
-          if [ -z "$DYLIB_PATH" ]; then
-            echo "::error::MultiLineFix.dylib not found in build output"
+          if [ -z "$FRAMEWORK_PATH" ]; then
+            echo "::error::MultiLineFix.framework not found in build output"
             exit 1
           fi
 
+          echo "Found framework at: $FRAMEWORK_PATH"
+
+          # Copy the framework binary as dylib
           mkdir -p Dylibs
-          cp "$DYLIB_PATH" Dylibs/MultiLineFix.dylib
+          cp "$FRAMEWORK_PATH/MultiLineFix" Dylibs/MultiLineFix.dylib
           echo "Built dylib: Dylibs/MultiLineFix.dylib"
           file Dylibs/MultiLineFix.dylib
 
