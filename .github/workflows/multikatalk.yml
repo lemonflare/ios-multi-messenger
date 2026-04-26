@@ -1,0 +1,261 @@
+name: Build MultiKaTalk
+
+on:
+  workflow_dispatch:
+    inputs:
+      ipa_url:
+        description: "URL to the decrypted KakaoTalk IPA file"
+        required: true
+        type: string
+
+      app_suffix:
+        description: "App suffix (e.g., '2' for KakaoTalk2)"
+        required: true
+        type: string
+        default: "2"
+
+      display_name:
+        description: "Display name (e.g., 'KakaoTalk2')"
+        required: true
+        type: string
+        default: "KakaoTalk2"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_multikatalk:
+    name: Build MultiKaTalk IPA
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download and validate IPA
+        run: |
+          if [ -z "${{ github.event.inputs.ipa_url }}" ]; then
+            echo "::error::IPA URL is required"
+            exit 1
+          fi
+
+          wget "${{ github.event.inputs.ipa_url }}" --no-verbose -O input.ipa
+
+          file_type=$(file --mime-type -b input.ipa)
+          echo "File type: $file_type"
+
+          if [[ "$file_type" != "application/x-ios-app" && "$file_type" != "application/zip" ]]; then
+            echo "::error::The downloaded file is not a valid IPA. Detected type: $file_type."
+            exit 1
+          fi
+
+      - name: Extract IPA
+        run: |
+          unzip -q input.ipa
+          APP=$(find Payload -name "*.app" -type d | head -n 1)
+          echo "APP_NAME=$APP" >> "$GITHUB_ENV"
+          echo "App found: $APP"
+
+      - name: Modify Info.plist
+        run: |
+          APP="${{ env.APP_NAME }}"
+          INFO="$APP/Info.plist"
+          SUFFIX="${{ github.event.inputs.app_suffix }}"
+          DISPLAY="${{ github.event.inputs.display_name }}"
+
+          # Build new identifiers
+          ORIGINAL_BUNDLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO")
+          NEW_BUNDLE="${ORIGINAL_BUNDLE}${SUFFIX}"
+
+          ORIGINAL_GROUP=$(/usr/libexec/PlistBuddy -c "Print APP_GROUPS_IDENTIFIER" "$INFO" 2>/dev/null || echo "group.$ORIGINAL_BUNDLE")
+          NEW_GROUP="${ORIGINAL_GROUP}${SUFFIX}"
+
+          ORIGINAL_HANDOFF=$(/usr/libexec/PlistBuddy -c "Print HANDOFF_IDENTIFIER" "$INFO" 2>/dev/null || echo "${ORIGINAL_BUNDLE}.handoff")
+          NEW_HANDOFF="${ORIGINAL_HANDOFF}${SUFFIX}"
+
+          # Modify basic bundle info
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $NEW_BUNDLE" "$INFO"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $DISPLAY" "$INFO"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleName $DISPLAY" "$INFO"
+
+          # Modify group and handoff identifiers
+          /usr/libexec/PlistBuddy -c "Set :APP_GROUPS_IDENTIFIER $NEW_GROUP" "$INFO"
+          /usr/libexec/PlistBuddy -c "Set :HANDOFF_IDENTIFIER $NEW_HANDOFF" "$INFO"
+
+          # Modify URL schemes - add suffix to all kakaotalk schemes
+          python3 scripts/modify_url_schemes.py "$INFO" "$SUFFIX" "kakaotalk,kakaolink,kakaoauth,kakaoplus,kakaokompassauth,kakaoopen,kakaotalkqrcode,kakaomom,kakaobizchat,kakaosync,kakaopay,kakaotaxi,kakaopage,kakaoweb,daumapps,daumwebtoon,brunchapp,daummaps,kakaostory,alphatalk,alphalink,alphaopen,alphaauth,alphaplus,alphakompassauth,alphastory"
+
+          echo "Modified Info.plist:"
+          /usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" "$INFO"
+          /usr/libexec/PlistBuddy -c "Print CFBundleDisplayName" "$INFO"
+
+      - name: Modify InfoPlist.strings
+        run: |
+          APP="${{ env.APP_NAME }}"
+          DISPLAY="${{ github.event.inputs.display_name }}"
+
+          for lang_dir in "$APP"/*.lproj; do
+            if [ -f "$lang_dir/InfoPlist.strings" ]; then
+              echo "Modifying $lang_dir/InfoPlist.strings"
+
+              # Create backup
+              cp "$lang_dir/InfoPlist.strings" "$lang_dir/InfoPlist.strings.bak"
+
+              # Modify CFBundleDisplayName
+              python3 scripts/modify_strings.py "$lang_dir/InfoPlist.strings" "CFBundleDisplayName" "$DISPLAY"
+
+              # Modify CFBundleName if it exists
+              python3 scripts/modify_strings.py "$lang_dir/InfoPlist.strings" "CFBundleName" "$DISPLAY" || true
+            fi
+          done
+
+      - name: Remove unnecessary folders
+        run: |
+          APP="${{ env.APP_NAME }}"
+
+          # Remove Watch folder if exists
+          if [ -d "$APP/Watch" ]; then
+            echo "Removing Watch folder"
+            rm -rf "$APP/Watch"
+          fi
+
+          # Remove PlugIns folder if exists
+          if [ -d "$APP/PlugIns" ]; then
+            echo "Removing PlugIns folder"
+            rm -rf "$APP/PlugIns"
+          fi
+
+      - name: Build MultiKaTalkFix.dylib
+        run: |
+          XCODE_PROJ="multikatalkfix-main/multikatalkfix-main/MultiKaTalkFix.xcodeproj"
+
+          if [ ! -d "$XCODE_PROJ" ]; then
+            echo "::error::Xcode project not found at $XCODE_PROJ"
+            exit 1
+          fi
+
+          # Build for iOS (arm64)
+          xcodebuild -project "$XCODE_PROJ" \
+            -scheme MultiKaTalkFix \
+            -configuration Release \
+            -sdk iphoneos \
+            -arch arm64 \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            clean build
+
+          # Find and copy the built dylib
+          DYLIB_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "MultiKaTalkFix.dylib" | head -n 1)
+
+          if [ -z "$DYLIB_PATH" ]; then
+            echo "::error::MultiKaTalkFix.dylib not found in build output"
+            exit 1
+          fi
+
+          mkdir -p Dylibs
+          cp "$DYLIB_PATH" Dylibs/MultiKaTalkFix.dylib
+          echo "Built dylib: Dylibs/MultiKaTalkFix.dylib"
+          file Dylibs/MultiKaTalkFix.dylib
+
+      - name: Inject dylib using optool
+        run: |
+          APP="${{ env.APP_NAME }}"
+          BINARY="$APP/$(basename "$APP" .app)"
+          DYLIB_PATH="Dylibs/MultiKaTalkFix.dylib"
+
+          # Download optool
+          wget https://github.com/alexzielenski/optool/releases/download/0.1.1/optool.zip -O optool.zip
+          unzip -q optool.zip
+          chmod +x optool
+
+          # Copy dylib to app bundle
+          mkdir -p "$APP/Dylibs"
+          cp "$DYLIB_PATH" "$APP/Dylibs/MultiKaTalkFix.dylib"
+
+          # Inject dylib
+          ./optool install -c load -p "@executable_path/Dylibs/MultiKaTalkFix.dylib" -t "$BINARY"
+
+          echo "Dylib injected successfully"
+
+      - name: Apply entitlements
+        run: |
+          APP="${{ env.APP_NAME }}"
+          BINARY="$APP/$(basename "$APP" .app)"
+          SUFFIX="${{ github.event.inputs.app_suffix }}"
+
+          # Generate entitlements
+          cat > /tmp/entitlements.xml <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>application-identifier</key>
+              <string>MV5A7FG3T2.com.iwilab.KakaoTalk${SUFFIX}</string>
+              <key>com.apple.developer.team-identifier</key>
+              <string>MV5A7FG3T2</string>
+              <key>get-task-allow</key>
+              <true/>
+              <key>keychain-access-groups</key>
+              <array>
+                  <string>MV5A7FG3T2.*</string>
+              </array>
+              <key>com.apple.security.application-groups</key>
+              <array>
+                  <string>group.com.iwilab.KakaoTalk${SUFFIX}</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+
+          # Apply entitlements with ldid
+          brew install ldid
+          ldid -S/tmp/entitlements.xml "$BINARY"
+
+          echo "Entitlements applied"
+
+      - name: Create IPA
+        run: |
+          OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
+          zip -qr "$OUTPUT_NAME" Payload
+          echo "Created IPA: $OUTPUT_NAME"
+          ls -lh "$OUTPUT_NAME"
+
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: multikatalk-${{ github.event.inputs.app_suffix }}-${{ github.run_number }}
+          name: MultiKaTalk${{ github.event.inputs.app_suffix }} (${{ github.run_number }})
+          files: ${{ github.event.inputs.display_name }}.ipa
+          body: |
+            ## MultiKaTalk${{ github.event.inputs.app_suffix }} IPA
+
+            ### Configuration
+            - Display name: ${{ github.event.inputs.display_name }}
+            - App suffix: ${{ github.event.inputs.app_suffix }}
+
+            ### Features
+            - Multi-instance support for KakaoTalk
+            - Keychain access group separation
+            - App group separation
+            - URL scheme separation to prevent conflicts
+
+            ### Installation
+            1. Download AltStore or SideStore
+            2. Install this IPA
+            3. You can now use this alongside the original KakaoTalk app
+
+            ### Notes
+            - This is for educational purposes only
+            - This project does not provide decrypted IPA files
+            - Users are responsible for complying with Kakao's Terms of Service
+            - This modified app may not receive official updates
+          draft: true
+
+      - name: Output Release URL
+        run: |
+          echo "::notice::Release created"
+          echo "::notice::Download at: https://github.com/${{ github.repository }}/releases/tag/multikatalk-${{ github.event.inputs.app_suffix }}-${{ github.run_number }}"
