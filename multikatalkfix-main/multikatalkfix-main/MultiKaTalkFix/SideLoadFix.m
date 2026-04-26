@@ -9,6 +9,7 @@
 #import <objc/runtime.h>
 #import <Intents/Intents.h>
 #import <Security/Security.h>
+#import <dlfcn.h>
 #import "SideLoadFix.h"
 #import "fishhook.h"
 #import "MethodSwizzling.h"
@@ -21,12 +22,22 @@ static NSURL* fakeGroupContainerURL;
 
 static NSString* stringEntitlement(NSString* entitlementName)
 {
-    SecTaskRef task = SecTaskCreateFromSelf(kCFAllocatorDefault);
+    typedef CFTypeRef (*SecTaskCreateFromSelfFunc)(CFAllocatorRef allocator);
+    typedef CFTypeRef (*SecTaskCopyValueForEntitlementFunc)(CFTypeRef task, CFStringRef entitlement, CFErrorRef *error);
+
+    SecTaskCreateFromSelfFunc createTask = (SecTaskCreateFromSelfFunc)dlsym(RTLD_DEFAULT, "SecTaskCreateFromSelf");
+    SecTaskCopyValueForEntitlementFunc copyValue = (SecTaskCopyValueForEntitlementFunc)dlsym(RTLD_DEFAULT, "SecTaskCopyValueForEntitlement");
+
+    if(!createTask || !copyValue) {
+        return @"";
+    }
+
+    CFTypeRef task = createTask(kCFAllocatorDefault);
     if(!task) {
         return @"";
     }
 
-    CFTypeRef value = SecTaskCopyValueForEntitlement(task, (__bridge CFStringRef)entitlementName, NULL);
+    CFTypeRef value = copyValue(task, (__bridge CFStringRef)entitlementName, NULL);
     CFRelease(task);
 
     if(!value) {
