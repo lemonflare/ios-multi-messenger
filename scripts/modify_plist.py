@@ -8,6 +8,12 @@ import plistlib
 from pathlib import Path
 
 
+def append_suffix_once(value, suffix):
+    if not value or value.endswith(suffix):
+        return value
+    return f"{value}{suffix}"
+
+
 def modify_plist(info_path, suffix, display_name):
     """
     Modify Info.plist for multi-instance support.
@@ -33,9 +39,9 @@ def modify_plist(info_path, suffix, display_name):
     original_handoff = plist.get('HANDOFF_IDENTIFIER', '')
 
     # Build new identifiers
-    new_bundle = f"{original_bundle}{suffix}"
-    new_group = f"{original_group}{suffix}" if original_group else ""
-    new_handoff = f"{original_handoff}{suffix}" if original_handoff else ""
+    new_bundle = append_suffix_once(original_bundle, suffix)
+    new_group = append_suffix_once(original_group, suffix) if original_group else ""
+    new_handoff = append_suffix_once(original_handoff, suffix) if original_handoff else ""
 
     # Modify basic bundle info
     plist['CFBundleIdentifier'] = new_bundle
@@ -47,52 +53,6 @@ def modify_plist(info_path, suffix, display_name):
         plist['APP_GROUPS_IDENTIFIER'] = new_group
     if new_handoff:
         plist['HANDOFF_IDENTIFIER'] = new_handoff
-
-    # Modify CFBundleURLSchemes
-    if 'CFBundleURLTypes' in plist:
-        for url_type in plist['CFBundleURLTypes']:
-            if 'CFBundleURLSchemes' in url_type:
-                modified_schemes = []
-                for scheme in url_type['CFBundleURLSchemes']:
-                    if not scheme.endswith(f'-{suffix}'):
-                        new_scheme = f"{scheme}-{suffix}"
-                        modified_schemes.append(new_scheme)
-                    else:
-                        modified_schemes.append(scheme)
-                url_type['CFBundleURLSchemes'] = modified_schemes
-
-    # Modify LSApplicationQueriesSchemes
-    if 'LSApplicationQueriesSchemes' in plist:
-        modified_queries = []
-        for scheme in plist['LSApplicationQueriesSchemes']:
-            if not scheme.endswith(f'-{suffix}'):
-                new_scheme = f"{scheme}-{suffix}"
-                modified_queries.append(new_scheme)
-            else:
-                modified_queries.append(scheme)
-        plist['LSApplicationQueriesSchemes'] = modified_queries
-
-    # Modify NSUserActivityTypes
-    if 'NSUserActivityTypes' in plist:
-        modified_activities = []
-        for activity in plist['NSUserActivityTypes']:
-            if 'handoff' in activity and not activity.endswith(f'-{suffix}'):
-                new_activity = f"{activity}{suffix}"
-                modified_activities.append(new_activity)
-            else:
-                modified_activities.append(activity)
-        plist['NSUserActivityTypes'] = modified_activities
-
-    # Modify BGTaskSchedulerPermittedIdentifiers
-    if 'BGTaskSchedulerPermittedIdentifiers' in plist:
-        modified_bg_tasks = []
-        for bg_task in plist['BGTaskSchedulerPermittedIdentifiers']:
-            if not bg_task.endswith(f'-{suffix}'):
-                new_bg_task = f"{bg_task}{suffix}"
-                modified_bg_tasks.append(new_bg_task)
-            else:
-                modified_bg_tasks.append(bg_task)
-        plist['BGTaskSchedulerPermittedIdentifiers'] = modified_bg_tasks
 
     # Write modified plist
     with open(info_path, 'wb') as f:

@@ -74,7 +74,7 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - CFBundleIdentifier: com.iwilab.KakaoTalk → com.iwilab.KakaoTalk2
 - CFBundleDisplayName: KakaoTalk → KakaoTalk2
 - APP_GROUPS_IDENTIFIER: group.com.iwilab.KakaoTalk → group.com.iwilab.KakaoTalk2
-- 모든 URL schemes에 -2 접미사 추가
+- 앱 고유 URL schemes에만 -2 접미사 추가
 ```
 
 ### 3. InfoPlist.strings 수정
@@ -97,8 +97,10 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - @executable_path/Dylibs/ 경로에 복사
 
 ### 7. 엔타이틀먼트 적용
-- 무료 개발자 계정용 엔타이틀먼트
-- ldid로 서명
+- Info.plist의 CFBundleIdentifier를 기준으로 application-identifier 생성
+- 메인 실행 파일은 CFBundleExecutable에서 읽어 정확히 선택
+- 주입한 dylib와 번들 내부 Mach-O 파일을 ldid로 재서명
+- 기존 _CodeSignature 제거 후 재패킹
 
 ### 8. IPA 생성
 - Payload 폴더 압축
@@ -118,6 +120,12 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - 엔타이틀먼트 확인
 - AltStore/SideStore 버전 확인
 
+### Feather에서 아이콘이 생성되지 않거나 실행되지 않음
+- CFBundleIdentifier와 application-identifier가 같은 번들 ID를 기준으로 생성되었는지 확인
+- CFBundleExecutable 값이 실제 메인 바이너리 파일명과 일치하는지 확인
+- 주입된 Dylibs/*.dylib가 재서명되었는지 확인
+- 앱 고유 URL scheme만 변경하고 LSApplicationQueriesSchemes는 원본 값을 유지했는지 확인
+
 ### 앱 충돌
 - dylib가 제대로 주입되었는지 확인
 - 엔타이틀먼트가 올바른지 확인
@@ -131,8 +139,11 @@ multi/
 │       ├── multikatalk.yml      # MultiKaTalk 빌드 워크플로우
 │       └── multiline.yml        # MultiLine 빌드 워크플로우
 ├── scripts/
-│   ├── modify_url_schemes.py    # URL 스킴 수정 스크립트
-│   └── modify_strings.py        # InfoPlist.strings 수정 스크립트
+│   ├── create_entitlements.py   # sideload용 엔타이틀먼트 생성
+│   ├── modify_plist.py          # Info.plist 수정 스크립트
+│   ├── modify_url_schemes.py    # 앱 고유 URL 스킴 수정 스크립트
+│   ├── modify_strings.py        # InfoPlist.strings 수정 스크립트
+│   └── sign_macho_bundle.sh     # 번들 내부 Mach-O 재서명
 ├── multikatalkfix-main/         # MultiKaTalkFix Xcode 프로젝트
 ├── multilinefix-main/           # MultiLineFix Xcode 프로젝트
 └── info_diff.txt                # Info.plst 차이점 예시

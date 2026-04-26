@@ -8,6 +8,7 @@
 #import <Foundation/Foundation.h>
 #import <objc/runtime.h>
 #import <Intents/Intents.h>
+#import <Security/Security.h>
 #import "SideLoadFix.h"
 #import "fishhook.h"
 #import "MethodSwizzling.h"
@@ -19,6 +20,18 @@ static NSString* keychainService = @"";
 static NSURL* fakeGroupContainerURL;
 
 
+static NSString* appSuffixFromBundleIdentifier(void)
+{
+    NSString* bundleIdentifier = [[NSBundle mainBundle] bundleIdentifier] ?: @"";
+    NSString* kakaoPrefix = @"com.iwilab.KakaoTalk";
+
+    if([bundleIdentifier hasPrefix:kakaoPrefix] && bundleIdentifier.length > kakaoPrefix.length) {
+        return [bundleIdentifier substringFromIndex:kakaoPrefix.length];
+    }
+
+    return @"";
+}
+
 void createDirectoryIfNotExists(NSURL* URL)
 {
     if(![URL checkResourceIsReachableAndReturnError:nil])
@@ -29,13 +42,13 @@ void createDirectoryIfNotExists(NSURL* URL)
 
 static OSStatus (*orig_SecItemAdd)(CFDictionaryRef, CFTypeRef*);
 static OSStatus hook_SecItemAdd(CFDictionaryRef attributes, CFTypeRef* result) {
-    if (CFDictionaryContainsKey(attributes, kSecAttrAccessGroup)) {
+    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(attributes, kSecAttrAccessGroup)) {
         CFMutableDictionaryRef mutableAttributes = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributes);
         CFDictionarySetValue(mutableAttributes, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
         CFDictionarySetValue(mutableAttributes, kSecAttrService, (__bridge void*)keychainService);
         attributes = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableAttributes);
     }
-    else if (CFDictionaryContainsKey(attributes, kSecAttrService)) {
+    else if (keychainService.length > 0 && CFDictionaryContainsKey(attributes, kSecAttrService)) {
         CFMutableDictionaryRef mutableAttributes = CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributes);
         CFDictionarySetValue(mutableAttributes, kSecAttrService, (__bridge void*)keychainService);
         attributes = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableAttributes);
@@ -45,14 +58,14 @@ static OSStatus hook_SecItemAdd(CFDictionaryRef attributes, CFTypeRef* result) {
 
 static OSStatus (*orig_SecItemCopyMatching)(CFDictionaryRef, CFTypeRef*);
 static OSStatus hook_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef* result) {
-    if (CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
+    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
         CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
         query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
     }
-    else if (CFDictionaryContainsKey(query, kSecAttrService)) {
+    else if (keychainService.length > 0 && CFDictionaryContainsKey(query, kSecAttrService)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
@@ -63,28 +76,28 @@ static OSStatus hook_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef* resul
 
 static OSStatus (*orig_SecItemUpdate)(CFDictionaryRef, CFDictionaryRef);
 static OSStatus hook_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
-    if (CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
+    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
         CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
         query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
     }
-    else if (CFDictionaryContainsKey(query, kSecAttrService)) {
+    else if (keychainService.length > 0 && CFDictionaryContainsKey(query, kSecAttrService)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
         query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
     }
     
-    if (CFDictionaryContainsKey(attributesToUpdate, kSecAttrAccessGroup)) {
+    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(attributesToUpdate, kSecAttrAccessGroup)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributesToUpdate);
         CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
         attributesToUpdate = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
     }
-    else if (CFDictionaryContainsKey(attributesToUpdate, kSecAttrService)) {
+    else if (keychainService.length > 0 && CFDictionaryContainsKey(attributesToUpdate, kSecAttrService)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributesToUpdate);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
@@ -95,14 +108,14 @@ static OSStatus hook_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attrib
 
 static OSStatus (*orig_SecItemDelete)(CFDictionaryRef);
 static OSStatus hook_SecItemDelete(CFDictionaryRef query) {
-    if (CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
+    if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
         CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
         query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
     }
-    else if (CFDictionaryContainsKey(query, kSecAttrService)) {
+    else if (keychainService.length > 0 && CFDictionaryContainsKey(query, kSecAttrService)) {
         CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
         CFDictionarySetValue(mutableQuery, kSecAttrService, (__bridge void*)keychainService);
@@ -120,7 +133,7 @@ void loadKeychainAccessGroup(void)
         (__bridge id)kSecReturnAttributes : @YES,
     };
     
-    CFTypeRef result;
+    CFTypeRef result = NULL;
     OSStatus ret = SecItemCopyMatching((__bridge CFDictionaryRef)dummyItem, &result);
     if(ret == -25300)
     {
@@ -131,7 +144,8 @@ void loadKeychainAccessGroup(void)
     {
         NSDictionary* resultDict = (__bridge id)result;
         keychainAccessGroup = resultDict[(__bridge id)kSecAttrAccessGroup];
-        keychainService = @"com.kakao.Talk2";
+        NSString* suffix = appSuffixFromBundleIdentifier();
+        keychainService = suffix.length > 0 ? [@"com.kakao.Talk" stringByAppendingString:suffix] : @"com.kakao.Talk";
         NSLog(@"[MultiKaTalkFix] Loaded keychainAccessGroup: %@, keychainService: %@", keychainAccessGroup, keychainService);
     }
 }
@@ -142,11 +156,19 @@ void loadKeychainAccessGroup(void)
 +(void)load {
     NSLog(@"[MultiKaTalkFix] Loaded SideLoadFix.");
     
-    origIMP_containerURLForSecurityApplicationGroupIdentifier = method_getImplementation(class_getInstanceMethod(NSClassFromString(@"NSFileManager"), @selector(containerURLForSecurityApplicationGroupIdentifier:)));
-    SwizzleInstanceMethod(NSClassFromString(@"NSFileManager"), [self class], @selector(containerURLForSecurityApplicationGroupIdentifier:), @selector(hook_containerURLForSecurityApplicationGroupIdentifier:));
+    Class fileManagerClass = NSClassFromString(@"NSFileManager");
+    Method containerMethod = class_getInstanceMethod(fileManagerClass, @selector(containerURLForSecurityApplicationGroupIdentifier:));
+    if(containerMethod) {
+        origIMP_containerURLForSecurityApplicationGroupIdentifier = method_getImplementation(containerMethod);
+        SwizzleInstanceMethod(fileManagerClass, [self class], @selector(containerURLForSecurityApplicationGroupIdentifier:), @selector(hook_containerURLForSecurityApplicationGroupIdentifier:));
+    }
     
-    origIMP_siriAuthorizationStatus = method_getImplementation(class_getClassMethod(NSClassFromString(@"INPreferences"), @selector(siriAuthorizationStatus)));
-    SwizzleClassMethod(NSClassFromString(@"INPreferences"), [self class], @selector(siriAuthorizationStatus), @selector(hook_siriAuthorizationStatus));
+    Class preferencesClass = NSClassFromString(@"INPreferences");
+    Method siriMethod = class_getClassMethod(preferencesClass, @selector(siriAuthorizationStatus));
+    if(siriMethod) {
+        origIMP_siriAuthorizationStatus = method_getImplementation(siriMethod);
+        SwizzleClassMethod(preferencesClass, [self class], @selector(siriAuthorizationStatus), @selector(hook_siriAuthorizationStatus));
+    }
     
     
     fakeGroupContainerURL = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/FakeGroupContainers"] isDirectory:YES];
@@ -163,7 +185,10 @@ void loadKeychainAccessGroup(void)
 }
 
 -(NSURL *)hook_containerURLForSecurityApplicationGroupIdentifier:(NSString *)groupIdentifier {
-    NSURL *ret = ((NSURL *(*)(id, SEL, NSString *))origIMP_containerURLForSecurityApplicationGroupIdentifier)(self, @selector(containerURLForSecurityApplicationGroupIdentifier:), groupIdentifier);
+    NSURL *ret = nil;
+    if(origIMP_containerURLForSecurityApplicationGroupIdentifier) {
+        ret = ((NSURL *(*)(id, SEL, NSString *))origIMP_containerURLForSecurityApplicationGroupIdentifier)(self, @selector(containerURLForSecurityApplicationGroupIdentifier:), groupIdentifier);
+    }
     if(!ret) {
         return [NSURL fileURLWithPath:NSHomeDirectory() isDirectory:YES];
         //        NSURL* fakeURL = [fakeGroupContainerURL URLByAppendingPathComponent:groupIdentifier];

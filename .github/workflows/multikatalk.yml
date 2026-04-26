@@ -28,6 +28,8 @@ jobs:
   build_multikatalk:
     name: Build MultiKaTalk IPA
     runs-on: macos-latest
+    env:
+      TEAM_ID: MV5A7FG3T2
     permissions:
       contents: write
 
@@ -154,13 +156,12 @@ jobs:
           cp "$FRAMEWORK_PATH/MultiKaTalkFix" Dylibs/MultiKaTalkFix.dylib
           echo "Built dylib: Dylibs/MultiKaTalkFix.dylib"
           file Dylibs/MultiKaTalkFix.dylib
-          echo "Built dylib: Dylibs/MultiKaTalkFix.dylib"
-          file Dylibs/MultiKaTalkFix.dylib
 
       - name: Inject dylib using optool
         run: |
           APP="${{ env.APP_NAME }}"
-          BINARY="$APP/$(basename "$APP" .app)"
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleExecutable" "$APP/Info.plist")
+          BINARY="$APP/$EXECUTABLE"
           DYLIB_PATH="Dylibs/MultiKaTalkFix.dylib"
 
           # Install optool from source
@@ -192,43 +193,24 @@ jobs:
       - name: Apply entitlements
         run: |
           APP="${{ env.APP_NAME }}"
-          BINARY="$APP/$(basename "$APP" .app)"
-          SUFFIX="${{ github.event.inputs.app_suffix }}"
+          EXECUTABLE=$(/usr/libexec/PlistBuddy -c "Print CFBundleExecutable" "$APP/Info.plist")
+          BINARY="$APP/$EXECUTABLE"
+          ENTITLEMENTS="/tmp/multikatalk-entitlements.plist"
 
-          # Generate entitlements
-          cat > /tmp/entitlements.xml <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>application-identifier</key>
-              <string>MV5A7FG3T2.com.iwilab.KakaoTalk${SUFFIX}</string>
-              <key>com.apple.developer.team-identifier</key>
-              <string>MV5A7FG3T2</string>
-              <key>get-task-allow</key>
-              <true/>
-              <key>keychain-access-groups</key>
-              <array>
-                  <string>MV5A7FG3T2.*</string>
-              </array>
-              <key>com.apple.security.application-groups</key>
-              <array>
-                  <string>group.com.iwilab.KakaoTalk${SUFFIX}</string>
-              </array>
-          </dict>
-          </plist>
-          EOF
+          python3 scripts/create_entitlements.py "$APP/Info.plist" "$ENTITLEMENTS" --team-id "$TEAM_ID"
 
-          # Apply entitlements with ldid
+          # Remove stale bundle signatures before ad-hoc signing modified Mach-O files.
+          find "$APP" -name "_CodeSignature" -type d -prune -exec rm -rf {} +
+
           brew install ldid
-          ldid -S/tmp/entitlements.xml "$BINARY"
+          bash scripts/sign_macho_bundle.sh "$APP" "$BINARY" "$ENTITLEMENTS"
 
           echo "Entitlements applied"
 
       - name: Create IPA
         run: |
           OUTPUT_NAME="${{ github.event.inputs.display_name }}.ipa"
-          zip -qr "$OUTPUT_NAME" Payload
+          zip -qry "$OUTPUT_NAME" Payload
           echo "Created IPA: $OUTPUT_NAME"
           ls -lh "$OUTPUT_NAME"
 

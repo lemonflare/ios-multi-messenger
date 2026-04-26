@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import <Security/Security.h>
 #import "MultiLineFix.h"
 #import "fishhook.h"
 #import <objc/runtime.h>
@@ -27,7 +28,7 @@ void createDirectoryIfNotExists(NSURL* URL)
 
 static OSStatus (*orig_SecItemAdd)(CFDictionaryRef, CFTypeRef*);
 static OSStatus hook_SecItemAdd(CFDictionaryRef attributes, CFTypeRef* result) {
-  if (CFDictionaryContainsKey(attributes, kSecAttrAccessGroup)) {
+  if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(attributes, kSecAttrAccessGroup)) {
     CFMutableDictionaryRef mutableAttributes =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributes);
     CFDictionarySetValue(mutableAttributes, kSecAttrAccessGroup,
@@ -39,7 +40,7 @@ static OSStatus hook_SecItemAdd(CFDictionaryRef attributes, CFTypeRef* result) {
 
 static OSStatus (*orig_SecItemCopyMatching)(CFDictionaryRef, CFTypeRef*);
 static OSStatus hook_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef* result) {
-  if (CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
+  if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
     CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
     CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
@@ -50,14 +51,14 @@ static OSStatus hook_SecItemCopyMatching(CFDictionaryRef query, CFTypeRef* resul
 
 static OSStatus (*orig_SecItemUpdate)(CFDictionaryRef, CFDictionaryRef);
 static OSStatus hook_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attributesToUpdate) {
-  if (CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
+  if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
     CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
     CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
     query = CFDictionaryCreateCopy(kCFAllocatorDefault, mutableQuery);
   }
 
-  if (CFDictionaryContainsKey(attributesToUpdate, kSecAttrAccessGroup)) {
+  if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(attributesToUpdate, kSecAttrAccessGroup)) {
     CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, attributesToUpdate);
     CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
@@ -68,7 +69,7 @@ static OSStatus hook_SecItemUpdate(CFDictionaryRef query, CFDictionaryRef attrib
 
 static OSStatus (*orig_SecItemDelete)(CFDictionaryRef);
 static OSStatus hook_SecItemDelete(CFDictionaryRef query) {
-  if (CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
+  if (keychainAccessGroup.length > 0 && CFDictionaryContainsKey(query, kSecAttrAccessGroup)) {
     CFMutableDictionaryRef mutableQuery =
         CFDictionaryCreateMutableCopy(kCFAllocatorDefault, 0, query);
     CFDictionarySetValue(mutableQuery, kSecAttrAccessGroup, (__bridge void*)keychainAccessGroup);
@@ -86,7 +87,7 @@ void loadKeychainAccessGroup()
         (__bridge id)kSecReturnAttributes : @YES,
     };
 
-    CFTypeRef result;
+    CFTypeRef result = NULL;
     OSStatus ret = SecItemCopyMatching((__bridge CFDictionaryRef)dummyItem, &result);
     if(ret == -25300)
     {
@@ -108,11 +109,20 @@ void loadKeychainAccessGroup()
 +(void)load {
     NSLog(@"[MultiLineFix] Loaded by 721!");
     
-    origIMP_containerURLForSecurityApplicationGroupIdentifier = method_getImplementation(class_getInstanceMethod(NSClassFromString(@"NSFileManager"), @selector(containerURLForSecurityApplicationGroupIdentifier:)));
-    SwizzleInstanceMethod(NSClassFromString(@"NSFileManager"), [self class], @selector(containerURLForSecurityApplicationGroupIdentifier:), @selector(hook_containerURLForSecurityApplicationGroupIdentifier:));
-    origIMP_setVocabularyStrings = method_getImplementation(class_getInstanceMethod(NSClassFromString(@"INVocabulary"), @selector(setVocabularyStrings:ofType:)));
-    SwizzleInstanceMethod(NSClassFromString(@"INVocabulary"), [self class], @selector(setVocabularyStrings:ofType:), @selector(hook_setVocabularyStrings:ofType:));
-    SwizzleClassMethod(NSClassFromString(@"INVocabulary"), NSClassFromString(@"MultiLineFix"), @selector(sharedVocabulary), @selector(hook_sharedVocabulary));
+    Class fileManagerClass = NSClassFromString(@"NSFileManager");
+    Method containerMethod = class_getInstanceMethod(fileManagerClass, @selector(containerURLForSecurityApplicationGroupIdentifier:));
+    if(containerMethod) {
+        origIMP_containerURLForSecurityApplicationGroupIdentifier = method_getImplementation(containerMethod);
+        SwizzleInstanceMethod(fileManagerClass, [self class], @selector(containerURLForSecurityApplicationGroupIdentifier:), @selector(hook_containerURLForSecurityApplicationGroupIdentifier:));
+    }
+
+    Class vocabularyClass = NSClassFromString(@"INVocabulary");
+    Method vocabularyMethod = class_getInstanceMethod(vocabularyClass, @selector(setVocabularyStrings:ofType:));
+    if(vocabularyMethod) {
+        origIMP_setVocabularyStrings = method_getImplementation(vocabularyMethod);
+        SwizzleInstanceMethod(vocabularyClass, [self class], @selector(setVocabularyStrings:ofType:), @selector(hook_setVocabularyStrings:ofType:));
+    }
+    SwizzleClassMethod(vocabularyClass, [self class], @selector(sharedVocabulary), @selector(hook_sharedVocabulary));
     
     fakeGroupContainerURL = [NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/FakeGroupContainers"] isDirectory:YES];
     rebind_symbols((struct rebinding[1]){{"SecItemCopyMatching", (void *)hook_SecItemCopyMatching, (void **)&orig_SecItemCopyMatching}}, 1);

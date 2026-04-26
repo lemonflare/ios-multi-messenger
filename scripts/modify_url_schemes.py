@@ -8,6 +8,15 @@ import plistlib
 from pathlib import Path
 
 
+def should_modify_scheme(scheme, prefixes):
+    for prefix in prefixes:
+        if scheme == prefix:
+            return True
+        if len(prefix) >= 3 and scheme.startswith(prefix):
+            return True
+    return False
+
+
 def modify_url_schemes(plist_path, suffix, schemes_to_modify):
     """
     Modify URL schemes in Info.plist to add suffix.
@@ -28,7 +37,8 @@ def modify_url_schemes(plist_path, suffix, schemes_to_modify):
         plist = plistlib.load(f)
 
     # Parse schemes to modify
-    schemes_list = [s.strip() for s in schemes_to_modify.split(',')]
+    schemes_list = [s.strip() for s in schemes_to_modify.split(',') if s.strip()]
+    modified_count = 0
 
     # Modify CFBundleURLSchemes
     if 'CFBundleURLTypes' in plist:
@@ -36,17 +46,12 @@ def modify_url_schemes(plist_path, suffix, schemes_to_modify):
             if 'CFBundleURLSchemes' in url_type:
                 modified_schemes = []
                 for scheme in url_type['CFBundleURLSchemes']:
-                    # Check if this scheme should be modified
-                    should_modify = any(
-                        scheme.startswith(prefix) or scheme == prefix
-                        for prefix in schemes_list
-                    )
-
-                    if should_modify:
+                    if should_modify_scheme(scheme, schemes_list):
                         # Add suffix if not already present
                         if not scheme.endswith(f'-{suffix}'):
                             new_scheme = f"{scheme}-{suffix}"
                             modified_schemes.append(new_scheme)
+                            modified_count += 1
                         else:
                             modified_schemes.append(scheme)
                     else:
@@ -54,33 +59,11 @@ def modify_url_schemes(plist_path, suffix, schemes_to_modify):
 
                 url_type['CFBundleURLSchemes'] = modified_schemes
 
-    # Modify LSApplicationQueriesSchemes
-    if 'LSApplicationQueriesSchemes' in plist:
-        modified_queries = []
-        for scheme in plist['LSApplicationQueriesSchemes']:
-            # Check if this scheme should be modified
-            should_modify = any(
-                scheme.startswith(prefix) or scheme == prefix
-                for prefix in schemes_list
-            )
-
-            if should_modify:
-                # Add suffix if not already present
-                if not scheme.endswith(f'-{suffix}'):
-                    new_scheme = f"{scheme}-{suffix}"
-                    modified_queries.append(new_scheme)
-                else:
-                    modified_queries.append(scheme)
-            else:
-                modified_queries.append(scheme)
-
-        plist['LSApplicationQueriesSchemes'] = modified_queries
-
     # Write modified plist
     with open(plist_path, 'wb') as f:
         plistlib.dump(plist, f)
 
-    print(f"Modified URL schemes in {plist_path}")
+    print(f"Modified {modified_count} URL scheme(s) in {plist_path}")
 
 
 if __name__ == '__main__':
