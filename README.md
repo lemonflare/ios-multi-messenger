@@ -1,11 +1,10 @@
-# iOS Multi Messenger Builder
+# iOS MultiKaTalk Builder
 
-GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드하는 프로젝트입니다.
+GitHub Actions를 사용하여 MultiKaTalk IPA를 빌드하는 프로젝트입니다.
 
 ## Features
 
 - **MultiKaTalk**: 카카오톡 여러 개 사용
-- **MultiLine**: LINE 여러 개 사용
 - **자동화**: GitHub Actions로 완전 자동화된 빌드 프로세스
 - **안전성**: 키체인, 앱 그룹, URL 스킴 분리로 충돌 방지
 
@@ -42,13 +41,12 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 
 3. **워크플로 실행**
    - GitHub 저장소 페이지에서 `Actions` 탭을 엽니다.
-   - KakaoTalk은 `Build MultiKaTalk`, LINE은 `Build MultiLine`을 선택합니다.
+   - `Build MultiKaTalk`을 선택합니다.
    - `Run workflow`를 누르고 기본 브랜치를 선택합니다.
    - `ipa_url`, `app_suffix`, `display_name`을 입력한 뒤 실행합니다.
 
 4. **입력값 예시**
    - KakaoTalk: `app_suffix=2`, `display_name=KakaoTalk2`
-   - LINE: `app_suffix=2`, `display_name=LINE2`
    - `app_suffix`는 번들 ID 뒤에 붙으므로 숫자와 영문처럼 번들 ID에 안전한 값만 권장합니다.
    - 같은 기기에 여러 개를 설치하려면 suffix를 각각 다르게 지정하세요.
 
@@ -64,13 +62,6 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - `app_suffix`: 예시 `2`
 - `display_name`: 예시 `KakaoTalk2`
 
-### MultiLine 빌드
-
-- workflow: `Build MultiLine`
-- `ipa_url`: Decrypted LINE IPA URL
-- `app_suffix`: 예시 `2`
-- `display_name`: 예시 `LINE2`
-
 ## Build Process
 
 빌드 프로세스는 다음 단계를 자동화합니다:
@@ -85,9 +76,8 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - CFBundleIdentifier: com.iwilab.KakaoTalk → com.iwilab.KakaoTalk2
 - CFBundleDisplayName: KakaoTalk → KakaoTalk2
 - APP_GROUPS_IDENTIFIER: group.com.iwilab.KakaoTalk → group.com.iwilab.KakaoTalk2
-- KakaoTalk은 앱 등록 URL schemes와 LSApplicationQueriesSchemes에 -2 접미사 추가
-- KakaoTalk은 NSUserActivityTypes와 BGTaskSchedulerPermittedIdentifiers의 앱 식별자도 함께 변경
-- LINE은 설치 호환성을 위해 앱 등록 URL schemes만 보수적으로 변경
+- 앱 등록 URL schemes와 LSApplicationQueriesSchemes에 -2 접미사 추가
+- NSUserActivityTypes와 BGTaskSchedulerPermittedIdentifiers의 앱 식별자도 함께 변경
 ```
 
 ### 3. InfoPlist.strings 수정
@@ -99,7 +89,7 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - PlugIns 폴더 삭제
 - 용량 최적화
 
-### 5. MultiKaTalkFix/MultiLineFix.dylib 빌드
+### 5. MultiKaTalkFix.dylib 빌드
 - Xcode 프로젝트 빌드
 - 키체인 충돌 방지
 - 앱 그룹 충돌 방지
@@ -112,8 +102,7 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 ### 7. 엔타이틀먼트 적용
 - Info.plist의 CFBundleIdentifier를 기준으로 application-identifier 생성
 - keychain-access-groups는 sideload 호환성을 위해 `TEAM_ID.*` 형태로 생성
-- KakaoTalk은 APP_GROUPS_IDENTIFIER를 com.apple.security.application-groups에 반영
-- LINE은 Feather 설치 호환성을 위해 application-groups entitlement를 제외
+- APP_GROUPS_IDENTIFIER를 com.apple.security.application-groups에 반영
 - 메인 실행 파일은 CFBundleExecutable에서 읽어 정확히 선택
 - 주입한 dylib와 번들 내부 Mach-O 파일을 ldid로 재서명
 - 기존 _CodeSignature 제거 후 재패킹
@@ -148,8 +137,7 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 - CFBundleExecutable 값이 실제 메인 바이너리 파일명과 일치하는지 확인
 - 주입된 Dylibs/*.dylib가 재서명되었는지 확인
 - keychain-access-groups가 `TEAM_ID.*` 형태인지 확인
-- KakaoTalk은 APP_GROUPS_IDENTIFIER와 application-groups entitlement가 같은 group ID를 쓰는지 확인
-- LINE은 application-groups entitlement가 빠져 있는지 확인
+- APP_GROUPS_IDENTIFIER와 application-groups entitlement가 같은 group ID를 쓰는지 확인
 
 ### 앱 충돌
 - dylib가 제대로 주입되었는지 확인
@@ -161,8 +149,7 @@ GitHub Actions를 사용하여 멀티 메신저 앱(KakaoTalk, LINE)을 빌드�
 multi/
 ├── .github/
 │   └── workflows/
-│       ├── multikatalk.yml      # MultiKaTalk 빌드 워크플로우
-│       └── multiline.yml        # MultiLine 빌드 워크플로우
+│       └── multikatalk.yml      # MultiKaTalk 빌드 워크플로우
 ├── scripts/
 │   ├── create_entitlements.py   # sideload용 엔타이틀먼트 생성
 │   ├── modify_plist.py          # Info.plist 수정 스크립트
@@ -170,7 +157,6 @@ multi/
 │   ├── modify_strings.py        # InfoPlist.strings 수정 스크립트
 │   └── sign_macho_bundle.sh     # 번들 내부 Mach-O 재서명
 ├── multikatalkfix-main/         # MultiKaTalkFix Xcode 프로젝트
-├── multilinefix-main/           # MultiLineFix Xcode 프로젝트
 └── Info_diff.txt                # KakaoTalk Info.plist 수정 참고 diff
 ```
 
@@ -192,10 +178,9 @@ multi/
 - 계정 제한, 데이터 손실, 알림 미동작, 앱 실행 실패 등 사용 결과에 대한 책임은 사용자에게 있습니다
 - 결제, DRM, 지역 제한, 서비스 정책을 우회하거나 스팸/남용 목적으로 사용하지 마세요
 - 수정된 앱은 공식 업데이트를 받을 수 없습니다
-- 이 프로젝트는 Kakao나 LINE과 관련이 없습니다
+- 이 프로젝트는 Kakao와 관련이 없습니다
 
 ## License
 
 이 프로젝트의 원작자는 다음과 같습니다:
 - MultiKaTalkFix 참고 소스: [alias20](https://gitlab.com/alias20/multikatalkfix)
-- MultiLineFix: 이 저장소에 포함된 local adaptation
